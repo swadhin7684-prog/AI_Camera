@@ -1,0 +1,45 @@
+{
+  "asar": false,
+  "appId": "com.sentinelx.ai.user",
+  "productName": "SentinelX AI",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "electron/**/*",
+    "frontend/dist/**/*",
+    "package.json"
+  ],
+  "extraMetadata": {
+    "main": "electron/main-user.cjs"
+  },
+  "extraResources": [
+    {
+      "from": "dist/sentinelx_backend",
+      "to": "backend",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "win": {
+    "executableName": "SentinelX AI",
+    "target": [
+      "nsis",
+      "portable"
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": true,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "include": "build/installer.nsh",
+    "artifactName": "SentinelX-AI-Setup-${version}-x64.${ext}"
+  },
+  "portable": {
+    "artifactName": "SentinelX-AI-Portable-${version}-x64.${ext}"
+  }
+}

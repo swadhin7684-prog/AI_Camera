@@ -1,0 +1,41 @@
+{
+  "name": "sentinelx-ai",
+  "version": "1.1.0",
+  "description": "SENTINELX AI — Industrial Worker Safety & PPE Monitoring System",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev:backend": "python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "python -m PyInstaller --noconfirm sentinelx_backend.spec",
+    "build:all": "npm run build:frontend && npm run build:backend",
+    "dev": "concurrently -k -n \"BACKEND,FRONTEND\" -c \"cyan,magenta\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "start": "electron electron/main.cjs",
+    "start:user": "electron electron/main-user.cjs",
+    "start:admin": "electron electron/main-admin.cjs",
+    "app": "concurrently -k -n \"AI_BACKEND,DESKTOP_UI\" -c \"cyan,green\" \"npm run dev:backend\" \"wait-on http-get://127.0.0.1:8000/api/health && electron electron/main.cjs\"",
+    "electron:dev": "npm run electron:dev:user",
+    "electron:dev:user": "concurrently -k -n \"BACKEND,FRONTEND,USER_APP\" -c \"cyan,magenta,green\" \"npm run dev:backend\" \"npm run dev:frontend\" \"wait-on http://localhost:5173 && cross-env ELECTRON_DEV=1 electron electron/main-user.cjs\"",
+    "electron:dev:admin": "concurrently -k -n \"BACKEND,FRONTEND,ADMIN_APP\" -c \"cyan,magenta,blue\" \"npm run dev:backend\" \"npm run dev:frontend\" \"wait-on http://localhost:5173 && cross-env ELECTRON_DEV=1 electron electron/main-admin.cjs\"",
+    "build": "npm run build:frontend",
+    "dist:user": "npm run build:frontend && electron-builder --config electron-builder.user.json --win --x64",
+    "dist:user:portable": "npm run build:frontend && electron-builder --config electron-builder.user.json --win portable --x64",
+    "dist:admin": "npm run build:frontend && electron-builder --config electron-builder.admin.json --win --x64",
+    "dist:admin:portable": "npm run build:frontend && electron-builder --config electron-builder.admin.json --win portable --x64",
+    "dist:both": "npm run build:frontend && electron-builder --config electron-builder.user.json --win --x64 && electron-builder --config electron-builder.admin.json --win --x64",
+    "dist:both:portable": "npm run build:frontend && electron-builder --config electron-builder.user.json --win portable --x64 && electron-builder --config electron-builder.admin.json --win portable --x64",
+    "dist:win": "npm run dist:user",
+    "dist:portable": "npm run dist:user:portable",
+    "dist:mac": "npm run build:frontend && electron-builder --mac",
+    "dist:all": "npm run dist:both"
+  },
+  "author": "SentinelX AI Team",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^41.2.0",
+    "electron-builder": "^26.7.1",
+    "wait-on": "^9.0.4"
+  }
+}

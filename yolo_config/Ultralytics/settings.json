@@ -1,0 +1,19 @@
+{
+  "settings_version": "0.0.8",
+  "datasets_dir": "C:\\Users\\swadh\\My_Websites\\AI_Detected_Camera - Copy - Copy\\datasets",
+  "weights_dir": "weights",
+  "runs_dir": "runs",
+  "uuid": "08d6319ee41a1b0135f68881347d5ac39abe602a7a992d71f8a582b9d3de5140",
+  "sync": true,
+  "api_key": "",
+  "openai_api_key": "",
+  "clearml": true,
+  "comet": true,
+  "dvc": true,
+  "mlflow": true,
+  "raytune": true,
+  "tensorboard": false,
+  "wandb": false,
+  "vscode_msg": true,
+  "openvino_msg": true
+}

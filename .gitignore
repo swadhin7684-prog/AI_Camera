@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Production build artifacts & heavy binaries
+release/
+dist/
+dist-desktop/
+build/sentinelx_backend/
+frontend/dist/
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Local Databases, state, and secrets
+*.db
+*.db-shm
+*.db-wal
+.admin_signing_key
+sentinelx_license.json
+
+# Local telemetry, test uploads, and snapshots
+data/uploads/
+data/snapshots/
+*.log
+
+# System & OS artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
