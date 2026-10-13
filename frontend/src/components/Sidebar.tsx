@@ -12,7 +12,8 @@ import {
   Sliders,
   ShieldCheck,
   Radio,
-  Film
+  Film,
+  User
 } from 'lucide-react';
 
 export type NavTab =
@@ -26,7 +27,8 @@ export type NavTab =
   | 'alerts'
   | 'incidents'
   | 'analytics'
-  | 'settings';
+  | 'settings'
+  | 'profile';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -58,6 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'incidents' as NavTab, label: 'Incident History', icon: AlertTriangle },
     { id: 'analytics' as NavTab, label: 'Safety Analytics', icon: BarChart3 },
     { id: 'settings' as NavTab, label: 'System Settings', icon: Sliders },
+    { id: 'profile' as NavTab, label: 'Profile', icon: User },
   ];
 
   return (

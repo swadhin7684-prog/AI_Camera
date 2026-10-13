@@ -17,6 +17,7 @@ import { IncidentDetailModal } from './components/modals/IncidentDetailModal';
 import { SuperAdminPortal } from './components/admin/SuperAdminPortal';
 import { LicenseActivationModal } from './components/modals/LicenseActivationModal';
 import { CompanyUserLoginModal } from './components/auth/CompanyUserLoginModal';
+import { UserProfileView } from './components/profile/UserProfileView';
 import { adminApi, LicenseStatusResult } from './services/adminApi';
 import { firebaseAuthService } from './services/firebase';
 
@@ -68,7 +69,8 @@ export const App: React.FC = () => {
     try {
       const res = await adminApi.checkLicenseStatus();
       setLicenseStatus(res);
-      if (!res.is_licensed) {
+      // In degraded safety mode or active mode, DO NOT block the screen; keep hazard detection and dashboard visible!
+      if (!res.is_licensed && res.status === 'UNLICENSED') {
         setShowLicenseModal(true);
       } else {
         setShowLicenseModal(false);
@@ -313,17 +315,7 @@ export const App: React.FC = () => {
     );
   }
 
-  // If company is licensed but operator is not yet signed in via Firebase, require login
-  if (licenseStatus?.is_licensed && authInitialized && !currentUser) {
-    return (
-      <CompanyUserLoginModal
-        companyInfo={licenseStatus?.company}
-        onAuthenticated={() => {
-          loadData();
-        }}
-      />
-    );
-  }
+
 
   return (
     <div className="flex h-screen bg-[#0B1120] text-[#F8FAFC] overflow-hidden select-none">
@@ -341,11 +333,38 @@ export const App: React.FC = () => {
           activeZone={telemetry?.zone || 'Welding Area'}
           activeViolationsCount={activeViolationsCount}
           onRefresh={loadData}
-          onOpenSuperAdmin={undefined}
+          onOpenProfile={() => setCurrentTab('profile')}
           licenseInfo={licenseStatus}
           currentUserEmail={currentUser?.email}
           onLogout={() => firebaseAuthService.logout()}
         />
+
+        {/* Degraded Safety Continuity Banner */}
+        {licenseStatus?.is_degraded && (
+          <div className="bg-amber-950/90 border-b border-amber-500/60 text-amber-200 px-4 py-2 flex items-center justify-between text-xs font-semibold shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-base">⚠️</span>
+              <span>
+                <strong>INDUSTRIAL SAFETY CONTINUITY MODE:</strong> Station lease expired or grace period elapsed. Real-time PPE hazard detection, CCTV video capture, and audible sirens are <strong>ACTIVE</strong>.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <a
+                href="/api/incidents/export-safety-package"
+                download
+                className="bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600 px-2.5 py-1 rounded text-xs transition"
+              >
+                📦 Export Safety Evidence (ZIP)
+              </a>
+              <button
+                onClick={() => setShowLicenseModal(true)}
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-2.5 py-1 rounded text-xs transition"
+              >
+                Renew Station Lease
+              </button>
+            </div>
+          </div>
+        )}
 
         <main className="flex-1 overflow-y-auto p-6">
           {currentTab === 'dashboard' && (
@@ -435,6 +454,17 @@ export const App: React.FC = () => {
           {currentTab === 'analytics' && <AnalyticsView analytics={analytics} />}
 
           {currentTab === 'settings' && <SettingsView onRefreshAll={loadData} />}
+
+          {currentTab === 'profile' && (
+            <UserProfileView
+              licenseStatus={licenseStatus}
+              onRefreshLicense={() => {
+                checkLicense();
+                loadData();
+              }}
+              onOpenLicenseModal={() => setShowLicenseModal(true)}
+            />
+          )}
         </main>
       </div>
 
@@ -465,7 +495,7 @@ export const App: React.FC = () => {
             checkLicense();
             loadData();
           }}
-          onClose={licenseStatus?.is_licensed ? () => setShowLicenseModal(false) : undefined}
+          onClose={() => setShowLicenseModal(false)}
         />
       )}
     </div>

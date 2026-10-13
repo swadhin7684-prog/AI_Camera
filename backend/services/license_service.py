@@ -4,7 +4,11 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 
-from backend.paths import LICENSE_FILE_PATH
+from backend.paths import LICENSE_FILE_PATH, STATION_LEASE_FILE_PATH
+from backend.auth.station_lease_verifier import (
+    verify_station_lease,
+    compute_machine_fingerprint
+)
 from backend.database.admin_db import (
     get_company_by_id,
     get_company_by_license_key,
@@ -149,110 +153,180 @@ def activate_company_license(company_id: str, license_key: str) -> Dict[str, Any
         }
     }
 
+def activate_station_lease(lease_container: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Validates and persists an Ed25519-signed v2.0 station lease locally.
+    Does not allow storing completely tampered or malformed leases.
+    """
+    verification = verify_station_lease(lease_container)
+    if verification.get("status") in ["MALFORMED", "UNSUPPORTED_VERSION", "MISSING_FIELD", "UNKNOWN_KEY_ID"]:
+        return {
+            "success": False,
+            "message": verification.get("message", "Invalid lease container format.")
+        }
+
+    try:
+        os.makedirs(os.path.dirname(STATION_LEASE_FILE_PATH), exist_ok=True)
+        with open(STATION_LEASE_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(lease_container, f, indent=2)
+        logger.info(f"Ed25519 Station lease stored: station={verification.get('station_id')}, status={verification.get('status')}")
+    except Exception as e:
+        logger.error(f"Failed to persist station lease: {e}")
+        return {"success": False, "message": f"Failed to persist lease file: {e}"}
+
+    log_admin_action(
+        action="STATION_LEASE_ACTIVATED",
+        actor_admin_id="STATION_CLIENT",
+        target_type="STATION",
+        target_id=verification.get("station_id") or "UNKNOWN",
+        details=f"Station lease registered. Status: {verification.get('status')}"
+    )
+
+    return {
+        "success": True,
+        "message": verification.get("message", "Station lease registered successfully."),
+        "lease": verification
+    }
+
 def get_current_license_status() -> Dict[str, Any]:
     """
-    Evaluates current local application license status:
-    1. Checks local license file.
-    2. Validates cryptographic signature.
-    3. Checks dynamic expiry and online database if available.
-    4. Applies 7-day offline grace period if network/server is unreachable.
+    Evaluates current local application license status with strict priority:
+    1. v2.0 Asymmetric Ed25519 Station Lease (sentinelx_lease.json)
+    2. Legacy v1.1 HMAC Token (sentinelx_license.json - explicitly marked deprecated)
+    3. Unlicensed standalone mode
+
+    SAFETY INVARIANT:
+    Safety-critical hazard monitoring (CCTV capture, PPE inference, audible alarms,
+    local incident logging, emergency evidence export) is NEVER halted by licensing status.
     """
-    if not os.path.exists(LICENSE_FILE_PATH):
-        return {
-            "is_licensed": False,
-            "status": "UNLICENSED",
-            "message": "No active license found. Please activate your company account.",
-            "company": None
-        }
-
-    try:
-        with open(LICENSE_FILE_PATH, "r", encoding="utf-8") as f:
-            local_record = json.load(f)
-    except Exception as e:
-        logger.warning(f"Could not read local license file: {e}")
-        return {
-            "is_licensed": False,
-            "status": "INVALID",
-            "message": "License file is corrupted. Please re-activate.",
-            "company": None
-        }
-
-    token_str = local_record.get("token")
-    verified_payload = verify_signed_token(token_str)
-
-    if not verified_payload:
-        return {
-            "is_licensed": False,
-            "status": "TAMPERED",
-            "message": "Cryptographic signature validation failed. License may have been altered.",
-            "company": None
-        }
-
-    company_id = verified_payload.get("company_id")
-    # Attempt to sync with local admin db (or remote service when configured)
-    online_company = get_company_by_id(company_id)
-    now = datetime.now(timezone.utc)
-
-    if online_company:
-        status = online_company["license_status"]
-        expiry_dt = datetime.fromisoformat(online_company["license_expiry"].replace("Z", "+00:00"))
-        if status == "SUSPENDED":
-            return {
-                "is_licensed": False,
-                "status": "SUSPENDED",
-                "message": "Company account is suspended by SentinelX Admin.",
-                "company": online_company
-            }
-        if status == "EXPIRED" or now > expiry_dt:
-            return {
-                "is_licensed": False,
-                "status": "EXPIRED",
-                "message": f"License expired on {online_company['license_expiry'][:10]}. Monitoring is paused.",
-                "company": online_company
-            }
-        return {
-            "is_licensed": True,
-            "status": "ACTIVE",
-            "message": "License is active and verified.",
-            "company": online_company
-        }
-
-    # Offline evaluation using verified token
-    expiry_str = verified_payload.get("license_expiry", "")
-    try:
-        expiry_dt = datetime.fromisoformat(expiry_str.replace("Z", "+00:00"))
-        last_verified_str = verified_payload.get("last_verified_at", "")
-        last_verified_dt = datetime.fromisoformat(last_verified_str.replace("Z", "+00:00"))
-        
-        # Check overall license expiry
-        if now > expiry_dt:
-            return {
-                "is_licensed": False,
-                "status": "EXPIRED",
-                "message": f"License expired on {expiry_str[:10]}.",
-                "company": verified_payload
-            }
+    # ---------------- 1. Check v2.0 Station Lease First ---------------- #
+    if os.path.exists(STATION_LEASE_FILE_PATH):
+        try:
+            with open(STATION_LEASE_FILE_PATH, "r", encoding="utf-8") as f:
+                lease_data = json.load(f)
+            v2_res = verify_station_lease(lease_data)
             
-        # Check offline grace period (7 days)
-        if now > last_verified_dt + timedelta(days=GRACE_PERIOD_DAYS):
+            # Map v2 verification result to application status
+            is_active = v2_res.get("status") in ["ACTIVE_VALID", "OFFLINE_GRACE"]
             return {
-                "is_licensed": False,
-                "status": "GRACE_EXPIRED",
-                "message": f"Offline grace period of {GRACE_PERIOD_DAYS} days expired. Please connect to internet to verify license.",
-                "company": verified_payload
+                "is_licensed": is_active,
+                "is_degraded": not is_active,
+                "status": v2_res.get("status"),
+                "mode": v2_res.get("mode"),
+                "safety_monitoring_active": True,
+                "license_format": "V2_ED25519_LEASE",
+                "message": v2_res.get("message"),
+                "company": {
+                    "company_id": v2_res.get("company_id"),
+                    "station_id": v2_res.get("station_id")
+                },
+                "days_remaining": v2_res.get("days_remaining", 0),
+                "features_allowed": v2_res.get("features_allowed", []),
+                "features_restricted": v2_res.get("features_restricted", [])
             }
+        except Exception as e:
+            logger.warning(f"Error reading v2 station lease: {e}")
 
-        return {
-            "is_licensed": True,
-            "status": "OFFLINE_ACTIVE",
-            "message": f"Operating in offline grace mode (Expires {expiry_str[:10]}).",
-            "company": verified_payload
-        }
-    except Exception as e:
-        logger.error(f"Error evaluating offline license: {e}")
-        return {
-            "is_licensed": False,
-            "status": "INVALID",
-            "message": "Failed to parse license date.",
-            "company": None
-        }
+    # ---------------- 2. Fallback to Legacy v1.1 HMAC License ---------------- #
+    if os.path.exists(LICENSE_FILE_PATH):
+        try:
+            with open(LICENSE_FILE_PATH, "r", encoding="utf-8") as f:
+                local_record = json.load(f)
+            token_str = local_record.get("token")
+            verified_payload = verify_signed_token(token_str)
+            
+            if not verified_payload:
+                return {
+                    "is_licensed": False,
+                    "is_degraded": True,
+                    "status": "DEGRADED_SAFETY_MODE",
+                    "mode": "DEGRADED",
+                    "safety_monitoring_active": True,
+                    "license_format": "LEGACY_V1_HMAC_DEPRECATED",
+                    "message": "Cryptographic signature validation failed on legacy license. Operating in SAFETY-PRESERVING DEGRADED MODE.",
+                    "company": None,
+                    "features_allowed": ["cctv_capture", "ppe_inference", "audio_alarm", "local_incident_log", "emergency_evidence_export"],
+                    "features_restricted": ["worker_enrollment", "zone_editing", "cloud_sync", "executive_pdf_reports"]
+                }
+
+            company_id = verified_payload.get("company_id")
+            online_company = get_company_by_id(company_id)
+            now = datetime.now(timezone.utc)
+
+            if online_company:
+                status = online_company["license_status"]
+                expiry_dt = datetime.fromisoformat(online_company["license_expiry"].replace("Z", "+00:00"))
+                if status == "SUSPENDED" or status == "EXPIRED" or now > expiry_dt:
+                    return {
+                        "is_licensed": False,
+                        "is_degraded": True,
+                        "status": "DEGRADED_SAFETY_MODE",
+                        "mode": "DEGRADED",
+                        "safety_monitoring_active": True,
+                        "license_format": "LEGACY_V1_HMAC_DEPRECATED",
+                        "message": f"Legacy license expired on {online_company['license_expiry'][:10]}. Operating in SAFETY-PRESERVING DEGRADED MODE. Hazard detection active.",
+                        "company": online_company,
+                        "features_allowed": ["cctv_capture", "ppe_inference", "audio_alarm", "local_incident_log", "emergency_evidence_export"],
+                        "features_restricted": ["worker_enrollment", "zone_editing", "cloud_sync", "executive_pdf_reports"]
+                    }
+                return {
+                    "is_licensed": True,
+                    "is_degraded": False,
+                    "status": "ACTIVE",
+                    "mode": "ACTIVE",
+                    "safety_monitoring_active": True,
+                    "license_format": "LEGACY_V1_HMAC_DEPRECATED",
+                    "message": "Legacy v1.1 HMAC license active (Deprecated - Please upgrade to v2.0 Station Lease).",
+                    "company": online_company,
+                    "features_allowed": ["cctv_capture", "ppe_inference", "audio_alarm", "local_incident_log", "emergency_evidence_export"],
+                    "features_restricted": []
+                }
+
+            # Offline legacy evaluation
+            expiry_str = verified_payload.get("license_expiry", "")
+            expiry_dt = datetime.fromisoformat(expiry_str.replace("Z", "+00:00"))
+            last_verified_str = verified_payload.get("last_verified_at", "")
+            last_verified_dt = datetime.fromisoformat(last_verified_str.replace("Z", "+00:00"))
+            
+            if now > expiry_dt or now > last_verified_dt + timedelta(days=GRACE_PERIOD_DAYS):
+                return {
+                    "is_licensed": False,
+                    "is_degraded": True,
+                    "status": "DEGRADED_SAFETY_MODE",
+                    "mode": "DEGRADED",
+                    "safety_monitoring_active": True,
+                    "license_format": "LEGACY_V1_HMAC_DEPRECATED",
+                    "message": f"Legacy license expired or offline grace elapsed. Operating in SAFETY-PRESERVING DEGRADED MODE. Hazard detection active.",
+                    "company": verified_payload,
+                    "features_allowed": ["cctv_capture", "ppe_inference", "audio_alarm", "local_incident_log", "emergency_evidence_export"],
+                    "features_restricted": ["worker_enrollment", "zone_editing", "cloud_sync", "executive_pdf_reports"]
+                }
+
+            return {
+                "is_licensed": True,
+                "is_degraded": False,
+                "status": "OFFLINE_ACTIVE",
+                "mode": "ACTIVE",
+                "safety_monitoring_active": True,
+                "license_format": "LEGACY_V1_HMAC_DEPRECATED",
+                "message": f"Operating in offline legacy mode (Expires {expiry_str[:10]}).",
+                "company": verified_payload,
+                "features_allowed": ["cctv_capture", "ppe_inference", "audio_alarm", "local_incident_log", "emergency_evidence_export"],
+                "features_restricted": []
+            }
+        except Exception as e:
+            logger.warning(f"Error parsing legacy license: {e}")
+
+    # ---------------- 3. Unlicensed Standalone Fallback ---------------- #
+    return {
+        "is_licensed": False,
+        "is_degraded": True,
+        "status": "UNLICENSED",
+        "mode": "STANDALONE",
+        "safety_monitoring_active": True,
+        "license_format": None,
+        "message": "No active station license found. Camera inferencing operates in local standalone mode.",
+        "company": None,
+        "features_allowed": ["cctv_capture", "ppe_inference", "audio_alarm", "local_incident_log", "emergency_evidence_export"],
+        "features_restricted": ["worker_enrollment", "zone_editing", "cloud_sync", "executive_pdf_reports"]
+    }

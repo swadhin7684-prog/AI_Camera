@@ -4,10 +4,15 @@ frontend/node_modules/
 
 # Production build artifacts & heavy binaries
 release/
+release*/
 dist/
 dist-desktop/
-build/sentinelx_backend/
+build/
 frontend/dist/
+*.exe
+
+# Backups
+backups/
 
 # Python cache & virtual environments
 __pycache__/
@@ -23,6 +28,7 @@ env/
 *.db-wal
 .admin_signing_key
 sentinelx_license.json
+sentinelx_lease.json
 
 # Local telemetry, test uploads, and snapshots
 data/uploads/

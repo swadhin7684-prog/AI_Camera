@@ -3,11 +3,14 @@ import cv2
 import time
 import json
 import base64
+import io
+import csv
+import zipfile
 import qrcode
 import numpy as np
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
-from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse, Response
 
 from backend.database.db import (
     get_all_workers, get_worker_by_id, get_worker_by_qr, create_worker,
@@ -478,6 +481,67 @@ def list_incidents(
     status: Optional[str] = None
 ):
     return {"incidents": get_incidents(limit, worker_id, department, camera_id, severity, status)}
+
+@router.get("/incidents/export-safety-package")
+def export_safety_evidence_package(
+    limit: int = 500,
+    severity: Optional[str] = None
+):
+    """
+    Local Emergency Safety Evidence Package (ZIP).
+    Generates an on-premise archive containing an incident audit CSV log and
+    associated JPEG snapshot images from local storage.
+    Zero cloud upload. Fully functional in both normal and Safety-Preserving Degraded Mode.
+    """
+    incidents = get_incidents(limit=limit, severity=severity)
+    
+    # 1. Build CSV in memory
+    csv_buf = io.StringIO()
+    writer = csv.writer(csv_buf)
+    writer.writerow([
+        "Incident ID", "Timestamp", "Camera ID", "Worker ID", "Worker Name",
+        "Department", "Violation Type", "Severity", "Status", "Snapshot Filename"
+    ])
+    for inc in incidents:
+        writer.writerow([
+            inc.get("id"),
+            inc.get("timestamp"),
+            inc.get("camera_id"),
+            inc.get("worker_id"),
+            inc.get("worker_name"),
+            inc.get("department"),
+            inc.get("violation_type"),
+            inc.get("severity"),
+            inc.get("status"),
+            inc.get("snapshot_path")
+        ])
+    
+    # 2. Build ZIP in memory
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("safety_incidents_audit_log.csv", csv_buf.getvalue())
+        
+        # Include snapshot JPEGs if present locally with strict canonical realpath containment check
+        real_snapshots_dir = os.path.realpath(SNAPSHOTS_DIR)
+        for inc in incidents:
+            snap_rel = inc.get("snapshot_path")
+            if snap_rel:
+                snap_name = os.path.basename(snap_rel)
+                full_path = os.path.join(SNAPSHOTS_DIR, snap_name)
+                real_target = os.path.realpath(full_path)
+                if real_target.startswith(real_snapshots_dir) and os.path.exists(real_target) and os.path.isfile(real_target):
+                    try:
+                        zf.write(real_target, arcname=f"evidence_snapshots/{snap_name}")
+                    except Exception as e:
+                        logger.debug(f"Failed to zip snapshot {snap_name}: {e}")
+
+    zip_bytes = zip_buf.getvalue()
+    filename = f"SentinelX_Safety_Evidence_{int(time.time())}.zip"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 @router.get("/incidents/{incident_id}")
 def get_incident(incident_id: int):

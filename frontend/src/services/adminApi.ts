@@ -37,9 +37,16 @@ export interface AuditLogItem {
 
 export interface LicenseStatusResult {
   is_licensed: boolean;
-  status: 'ACTIVE' | 'OFFLINE_ACTIVE' | 'SUSPENDED' | 'EXPIRED' | 'GRACE_EXPIRED' | 'UNLICENSED' | 'INVALID' | 'TAMPERED';
+  is_degraded?: boolean;
+  status: string;
+  mode?: string;
+  safety_monitoring_active?: boolean;
+  license_format?: string | null;
   message: string;
   company?: CompanyAccount | any;
+  days_remaining?: number;
+  features_allowed?: string[];
+  features_restricted?: string[];
 }
 
 const TOKEN_STORAGE_KEY = 'sentinelx_admin_token';
@@ -78,7 +85,11 @@ export const adminApi = {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to complete initial setup');
     }
-    return res.json();
+    const result = await res.json();
+    if (result.token) {
+      adminApi.setToken(result.token);
+    }
+    return result;
   },
 
   login: async (username_or_email: string, password: string) => {
@@ -246,6 +257,34 @@ export const adminApi = {
       const err = await res.json();
       throw new Error(err.detail || 'Cloud license sync failed');
     }
+    return res.json();
+  },
+
+  getStationFingerprint: async (): Promise<{ machine_fingerprint: string }> => {
+    const res = await fetch('/api/license/station-fingerprint');
+    if (!res.ok) {
+      throw new Error('Failed to retrieve station hardware fingerprint');
+    }
+    return res.json();
+  },
+
+  activateStationLease: async (leaseData: Record<string, any>) => {
+    const res = await fetch('/api/license/activate-station-lease', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(leaseData)
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Station lease activation failed');
+    }
+    return res.json();
+  },
+
+  deactivateLicense: async () => {
+    const res = await fetch('/api/license/deactivate', {
+      method: 'POST'
+    });
     return res.json();
   }
 };

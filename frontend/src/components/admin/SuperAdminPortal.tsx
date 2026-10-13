@@ -18,7 +18,9 @@ import {
   Edit2,
   Lock,
   FileText,
-  AlertCircle
+  AlertCircle,
+  User,
+  LogIn
 } from 'lucide-react';
 import {
   adminApi,
@@ -36,7 +38,7 @@ interface SuperAdminPortalProps {
 export const SuperAdminPortal: React.FC<SuperAdminPortalProps> = ({ onBackToApp, standalone = false }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!adminApi.getToken());
   const [adminUser, setAdminUser] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'companies' | 'audit'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'companies' | 'audit' | 'profile'>('dashboard');
 
   // Login & Setup State
   const [loginIdentifier, setLoginIdentifier] = useState('');
@@ -84,8 +86,20 @@ export const SuperAdminPortal: React.FC<SuperAdminPortalProps> = ({ onBackToApp,
       const setup = await adminApi.getSetupStatus();
       if (!setup.is_initialized) {
         setIsSetupNeeded(true);
-      } else if (isAuthenticated) {
-        loadAdminData();
+      } else {
+        setIsSetupNeeded(false);
+        const token = adminApi.getToken();
+        if (token) {
+          try {
+            const me = await adminApi.getMe();
+            setAdminUser(me.admin);
+            setIsAuthenticated(true);
+            loadAdminData();
+          } catch (_) {
+            adminApi.clearToken();
+            setIsAuthenticated(false);
+          }
+        }
       }
     } catch (e) {
       console.error(e);
@@ -148,17 +162,24 @@ export const SuperAdminPortal: React.FC<SuperAdminPortalProps> = ({ onBackToApp,
     }
     setLoginLoading(true);
     try {
-      await adminApi.initialSetup({
+      const setupRes = await adminApi.initialSetup({
         username: setupUsername,
         email: setupEmail,
         password: setupPassword
       });
       setIsSetupNeeded(false);
       // Auto login with new credentials
-      const res = await adminApi.login(setupUsername, setupPassword);
-      setAdminUser(res.admin);
-      setIsAuthenticated(true);
-      loadAdminData();
+      if (setupRes.token) {
+        adminApi.setToken(setupRes.token);
+        setAdminUser(setupRes.admin);
+        setIsAuthenticated(true);
+        loadAdminData();
+      } else {
+        const res = await adminApi.login(setupUsername, setupPassword);
+        setAdminUser(res.admin);
+        setIsAuthenticated(true);
+        loadAdminData();
+      }
     } catch (err: any) {
       setLoginError(err.message || 'Setup failed');
     } finally {
@@ -424,6 +445,17 @@ export const SuperAdminPortal: React.FC<SuperAdminPortalProps> = ({ onBackToApp,
               }`}
             >
               Security Audit Trail
+            </button>
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 ${
+                activeTab === 'profile'
+                  ? 'bg-[#1E293B] text-[#38BDF8] border border-[#38BDF8]/30'
+                  : 'text-[#94A3B8] hover:text-white'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>Admin Profile</span>
             </button>
           </nav>
         </div>
@@ -757,6 +789,116 @@ export const SuperAdminPortal: React.FC<SuperAdminPortalProps> = ({ onBackToApp,
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== TAB: ADMIN PROFILE ==================== */}
+        {activeTab === 'profile' && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            {/* Header Banner */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#1E293B]">
+              <div className="flex items-center space-x-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-[#0EA5E9]/20 to-[#6366F1]/10 border border-[#38BDF8]/40 rounded-2xl flex items-center justify-center shadow-lg shadow-[#0EA5E9]/10">
+                  <Shield className="w-7 h-7 text-[#38BDF8]" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white tracking-wide">Master Administrator Profile</h2>
+                  <p className="text-xs text-[#94A3B8] mt-1">Control Plane Security Authority & Commercial Licensing Management</p>
+                </div>
+              </div>
+
+              {/* Login and Logout buttons inside Admin Profile */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center space-x-2 px-4 py-2 bg-[#1E293B] hover:bg-[#334155] border border-[#334155] text-gray-200 hover:text-white rounded-xl text-xs font-semibold transition"
+                  title="Switch to another administrator account"
+                >
+                  <LogIn className="w-4 h-4 text-[#38BDF8]" />
+                  <span>Login / Switch Admin</span>
+                </button>
+
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center space-x-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-xs font-semibold transition shadow-sm"
+                  title="Terminate current administrator session"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Log Out</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Profile Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Account Credentials */}
+              <div className="bg-[#0F172A] border border-[#1E293B] rounded-2xl p-6 shadow-xl space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-[#1E293B]">
+                  <div className="flex items-center space-x-2 text-sm font-semibold text-white">
+                    <User className="w-4 h-4 text-[#38BDF8]" />
+                    <span>Administrator Identity</span>
+                  </div>
+                  <span className="text-[10px] bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                    {adminUser?.role || 'SUPER_ADMIN'}
+                  </span>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <span className="text-[#64748B] block mb-0.5 uppercase font-semibold text-[10px] tracking-wider">Admin Username</span>
+                    <span className="text-white text-sm font-bold">{adminUser?.username || 'superadmin'}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[#64748B] block mb-0.5 uppercase font-semibold text-[10px] tracking-wider">Official Email</span>
+                    <span className="text-gray-300 font-medium">{adminUser?.email || 'admin@sentinelx.ai'}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[#64748B] block mb-0.5 uppercase font-semibold text-[10px] tracking-wider">Unique Admin ID</span>
+                    <span className="text-[#38BDF8] font-mono font-bold">{adminUser?.admin_id || 'ADM-ROOT'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cryptographic & Platform Authority */}
+              <div className="bg-[#0F172A] border border-[#1E293B] rounded-2xl p-6 shadow-xl space-y-4">
+                <div className="flex items-center space-x-2 text-sm font-semibold text-white pb-3 border-b border-[#1E293B]">
+                  <Lock className="w-4 h-4 text-emerald-400" />
+                  <span>Security & Authority Realm</span>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div className="flex justify-between py-1 border-b border-[#1E293B]/60 text-[#94A3B8]">
+                    <span>Authentication Method:</span>
+                    <span className="text-white font-mono font-semibold">PBKDF2-HMAC-SHA256 (120k)</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-[#1E293B]/60 text-[#94A3B8]">
+                    <span>Station Lease Protocol:</span>
+                    <span className="text-emerald-400 font-mono font-semibold">Ed25519 Asymmetric</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-[#1E293B]/60 text-[#94A3B8]">
+                    <span>Session Token Expiry:</span>
+                    <span className="text-[#38BDF8] font-mono font-semibold">12 Hours Signed</span>
+                  </div>
+                  <div className="flex justify-between py-1 text-[#94A3B8]">
+                    <span>Authority Scope:</span>
+                    <span className="text-white font-semibold">Global Company Lifecycle</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Platform Governance Notice */}
+            <div className="bg-[#0F172A] border border-[#1E293B] rounded-2xl p-5 text-xs text-[#94A3B8] leading-relaxed">
+              <div className="flex items-center space-x-2 text-[#38BDF8] font-semibold mb-1">
+                <Shield className="w-4 h-4" />
+                <span>Super Administrator Governance</span>
+              </div>
+              <span>
+                As a Master Administrator, this profile possesses root authority to issue client company licenses, extend subscriptions, suspend delinquent accounts, and audit station security operations.
+              </span>
             </div>
           </div>
         )}

@@ -177,9 +177,10 @@ def init_admin_db():
 def get_super_admin_by_email_or_username(identifier: str) -> Optional[Dict[str, Any]]:
     conn = get_admin_db_connection()
     c = conn.cursor()
+    cleaned = identifier.strip()
     c.execute(
-        "SELECT * FROM super_admins WHERE (email = ? OR username = ?) AND is_active = 1",
-        (identifier.strip().lower(), identifier.strip())
+        "SELECT * FROM super_admins WHERE (LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)) AND is_active = 1",
+        (cleaned, cleaned)
     )
     row = c.fetchone()
     conn.close()

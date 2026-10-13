@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Volume2, VolumeX, ShieldAlert, Sparkles, RefreshCw, Play, Shield, Building2 } from 'lucide-react';
+import { Volume2, VolumeX, ShieldAlert, Sparkles, RefreshCw, Play, Shield, Building2, User } from 'lucide-react';
 import { soundService } from '../services/sound';
 import { api } from '../services/api';
 
@@ -7,7 +7,7 @@ interface AppHeaderProps {
   activeZone: string;
   activeViolationsCount: number;
   onRefresh?: () => void;
-  onOpenSuperAdmin?: () => void;
+  onOpenProfile?: () => void;
   licenseInfo?: any;
   currentUserEmail?: string | null;
   onLogout?: () => void;
@@ -17,7 +17,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   activeZone,
   activeViolationsCount,
   onRefresh,
-  onOpenSuperAdmin,
+  onOpenProfile,
   licenseInfo,
   currentUserEmail,
   onLogout
@@ -139,28 +139,34 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           </button>
         )}
 
-        {/* Company License Chip */}
+        {/* Company License Chip (Clickable to open Profile) */}
         {licenseInfo?.company?.name && (
-          <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#172033] border border-[#263449] rounded-lg text-xs text-[#E2E8F0]">
+          <button
+            onClick={onOpenProfile}
+            title="Click to view Company & Station Profile"
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#172033] hover:bg-[#1e2c45] border border-[#263449] hover:border-[#00D9FF]/40 rounded-lg text-xs text-[#E2E8F0] transition cursor-pointer"
+          >
             <Building2 className="w-3.5 h-3.5 text-[#00D9FF]" />
             <span className="font-semibold">{licenseInfo.company.name}</span>
             <span className="text-[10px] bg-[#00D9FF]/15 text-[#00D9FF] px-1.5 py-0.5 rounded font-mono font-bold">
               {licenseInfo.company.plan_type || 'Enterprise'}
             </span>
-          </div>
-        )}
-
-        {/* Super Admin Switch Button */}
-        {onOpenSuperAdmin && (
-          <button
-            onClick={onOpenSuperAdmin}
-            title="Access SentinelX Super Admin Control Plane"
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#0EA5E9]/10 hover:bg-[#0EA5E9]/20 border border-[#0EA5E9]/30 rounded-lg text-xs font-semibold text-[#38BDF8] transition"
-          >
-            <Shield className="w-3.5 h-3.5" />
-            <span>Super Admin</span>
           </button>
         )}
+
+        {/* Profile Button */}
+        {onOpenProfile && (
+          <button
+            onClick={onOpenProfile}
+            title="Station & Organization Profile"
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#172033] hover:bg-[#1e2c45] border border-[#263449] hover:border-[#00D9FF]/40 rounded-lg text-xs text-[#94A3B8] hover:text-[#00D9FF] transition font-medium"
+          >
+            <User className="w-3.5 h-3.5 text-[#00D9FF]" />
+            <span>Profile</span>
+          </button>
+        )}
+
+
 
         {/* Operator User Chip & Sign Out */}
         {currentUserEmail && (

@@ -1,0 +1,35 @@
+{
+  "asar": false,
+  "appId": "com.sentinelx.ai.user",
+  "productName": "SentinelX AI",
+  "directories": {
+    "output": "release-v2.0"
+  },
+  "files": [
+    "electron/**/*",
+    "frontend/dist/**/*",
+    "package.json"
+  ],
+  "extraMetadata": {
+    "version": "2.0.0",
+    "main": "electron/main-user.cjs"
+  },
+  "extraResources": [
+    {
+      "from": "dist/sentinelx_backend",
+      "to": "backend",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "win": {
+    "executableName": "SentinelX AI",
+    "target": [
+      "portable"
+    ]
+  },
+  "portable": {
+    "artifactName": "SentinelX-AI-Portable-2.0.0-x64.${ext}"
+  }
+}

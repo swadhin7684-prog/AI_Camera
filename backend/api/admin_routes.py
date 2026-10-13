@@ -101,7 +101,7 @@ class InitialSetupRequest(BaseModel):
     username: str
     email: str
     password: str
-    setup_key: str
+    setup_key: Optional[str] = None
 
 # ==================== SUPER ADMIN AUTH ENDPOINTS ====================
 
@@ -123,7 +123,22 @@ async def initial_super_admin_setup(req: InitialSetupRequest, request: Request):
     client_ip = request.client.host if request.client else "127.0.0.1"
     admin = create_super_admin(req.username, req.email, req.password)
     log_admin_action("FIRST_ADMIN_PROVISIONED", admin["admin_id"], "AUTH", admin["admin_id"], "Initial setup", client_ip)
-    return {"success": True, "message": "Super Admin successfully initialized.", "admin": admin}
+    
+    # Auto-login upon registration: issue token immediately
+    record_super_admin_login(admin["admin_id"])
+    token = create_signed_token({
+        "sub": admin["admin_id"],
+        "username": admin["username"],
+        "email": admin["email"],
+        "role": "SUPER_ADMIN"
+    }, expires_in_seconds=43200)
+
+    return {
+        "success": True,
+        "message": "Super Admin successfully initialized.",
+        "admin": admin,
+        "token": token
+    }
 
 @router.post("/auth/login")
 async def super_admin_login(req: AdminLoginRequest, request: Request):
@@ -304,3 +319,34 @@ async def activate_cloud_license(data: Dict[str, Any]):
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
+
+@license_router.get("/station-fingerprint")
+async def get_station_fingerprint():
+    """Returns the local hardware-bound station fingerprint for lease registration."""
+    from backend.auth.station_lease_verifier import compute_machine_fingerprint
+    return {
+        "machine_fingerprint": compute_machine_fingerprint()
+    }
+
+@license_router.post("/activate-station-lease")
+async def register_station_lease(lease_data: Dict[str, Any]):
+    """Registers and activates an asymmetric Ed25519-signed station lease locally."""
+    from backend.services.license_service import activate_station_lease
+    res = activate_station_lease(lease_data)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return res
+
+@license_router.post("/deactivate")
+async def deactivate_local_license():
+    """Deactivates/logs out the current station license from this local machine."""
+    import os
+    from backend.paths import LICENSE_FILE_PATH, STATION_LEASE_FILE_PATH
+    for p in [LICENSE_FILE_PATH, STATION_LEASE_FILE_PATH]:
+        if os.path.exists(p):
+            try:
+                os.remove(p)
+            except Exception:
+                pass
+    return {"success": True, "message": "Station license successfully deactivated."}
+
