@@ -24,6 +24,7 @@ from backend.database.admin_db import (
 )
 from backend.services.license_service import (
     activate_company_license,
+    activate_cloud_company_license,
     get_current_license_status,
     issue_company_license_token
 )
@@ -292,6 +293,14 @@ async def check_local_license():
 async def activate_license(req: ActivateLicenseRequest):
     """Activates the local application using Company ID and License Key."""
     res = activate_company_license(req.company_id, req.license_key)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return res
+
+@license_router.post("/activate-cloud")
+async def activate_cloud_license(data: Dict[str, Any]):
+    """Activates and syncs cloud-verified Firebase Firestore company license to local machine."""
+    res = activate_cloud_company_license(data)
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res

@@ -11,7 +11,9 @@ from backend.database.admin_db import (
     create_signed_token,
     verify_signed_token,
     check_and_update_expiry,
-    log_admin_action
+    log_admin_action,
+    create_company_account,
+    update_company_details
 )
 
 logger = logging.getLogger("sentinelx.license")
@@ -38,6 +40,40 @@ def issue_company_license_token(company_id: str) -> Optional[str]:
     }
     # Token valid for 30 days before mandatory re-validation
     return create_signed_token(payload, expires_in_seconds=30 * 86400)
+
+def activate_cloud_company_license(company_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Syncs a cloud-verified Firebase Firestore company license into local SQLite and activates it."""
+    company_id = company_data.get("company_id")
+    license_key = company_data.get("license_key")
+    if not company_id or not license_key:
+        return {"success": False, "message": "Missing company_id or license_key in cloud payload."}
+
+    # If company does not exist in local DB, create record
+    existing = get_company_by_id(company_id)
+    if not existing:
+        try:
+            create_company_account(
+                company_id=company_id,
+                name=company_data.get("name", "Company"),
+                contact_email=company_data.get("contact_email", "contact@company.com"),
+                contact_phone=company_data.get("contact_phone", ""),
+                address=company_data.get("address", ""),
+                plan_type=company_data.get("plan_type", "Enterprise"),
+                max_users=company_data.get("max_users", 5),
+                license_key=license_key,
+                validity_days=365,
+                actor_admin_id="FIREBASE_CLOUD_SYNC"
+            )
+        except Exception as e:
+            logger.warning(f"Note on creating local company during sync: {e}")
+
+    # Ensure status and expiry match cloud record
+    update_company_details(company_id, {
+        "license_expiry": company_data.get("license_expiry"),
+        "license_status": company_data.get("license_status", "ACTIVE")
+    }, actor_admin_id="FIREBASE_CLOUD_SYNC")
+
+    return activate_company_license(company_id, license_key)
 
 def activate_company_license(company_id: str, license_key: str) -> Dict[str, Any]:
     """Activates the local application using provided company credentials."""

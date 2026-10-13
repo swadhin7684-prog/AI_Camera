@@ -9,6 +9,8 @@ interface AppHeaderProps {
   onRefresh?: () => void;
   onOpenSuperAdmin?: () => void;
   licenseInfo?: any;
+  currentUserEmail?: string | null;
+  onLogout?: () => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -16,7 +18,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   activeViolationsCount,
   onRefresh,
   onOpenSuperAdmin,
-  licenseInfo
+  licenseInfo,
+  currentUserEmail,
+  onLogout
 }) => {
   const [timeStr, setTimeStr] = useState<string>('');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(soundService.enabled);
@@ -156,6 +160,24 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <Shield className="w-3.5 h-3.5" />
             <span>Super Admin</span>
           </button>
+        )}
+
+        {/* Operator User Chip & Sign Out */}
+        {currentUserEmail && (
+          <div className="flex items-center space-x-2 pl-2 border-l border-[#263449]">
+            <span className="text-xs text-[#94A3B8] max-w-[140px] truncate" title={currentUserEmail}>
+              {currentUserEmail}
+            </span>
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                title="Sign Out Operator"
+                className="text-[11px] px-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-md transition"
+              >
+                Sign Out
+              </button>
+            )}
+          </div>
         )}
 
         {/* Live Clock */}

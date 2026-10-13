@@ -16,7 +16,9 @@ import { WorkerProfileModal } from './components/modals/WorkerProfileModal';
 import { IncidentDetailModal } from './components/modals/IncidentDetailModal';
 import { SuperAdminPortal } from './components/admin/SuperAdminPortal';
 import { LicenseActivationModal } from './components/modals/LicenseActivationModal';
+import { CompanyUserLoginModal } from './components/auth/CompanyUserLoginModal';
 import { adminApi, LicenseStatusResult } from './services/adminApi';
+import { firebaseAuthService } from './services/firebase';
 
 import {
   api,
@@ -49,6 +51,10 @@ export const App: React.FC = () => {
   // Check if running in dedicated Super Admin Application mode
   const urlParams = new URLSearchParams(window.location.search);
   const isAdminApp = urlParams.get('app') === 'admin' || urlParams.get('mode') === 'admin' || window.location.hash.includes('admin');
+
+  // Firebase User Authentication State
+  const [currentUser, setCurrentUser] = useState<any>(firebaseAuthService.getCurrentUser());
+  const [authInitialized, setAuthInitialized] = useState<boolean>(false);
 
   // Super Admin & Licensing States
   const [showSuperAdmin, setShowSuperAdmin] = useState<boolean>(false);
@@ -94,6 +100,14 @@ export const App: React.FC = () => {
       console.warn('Initial load error:', e);
     }
   };
+
+  useEffect(() => {
+    const unsubscribe = firebaseAuthService.onStateChange((user) => {
+      setCurrentUser(user);
+      setAuthInitialized(true);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (isAdminApp) return; // Do not connect to video telemetry or camera streams in Admin mode
@@ -299,6 +313,18 @@ export const App: React.FC = () => {
     );
   }
 
+  // If company is licensed but operator is not yet signed in via Firebase, require login
+  if (licenseStatus?.is_licensed && authInitialized && !currentUser) {
+    return (
+      <CompanyUserLoginModal
+        companyInfo={licenseStatus?.company}
+        onAuthenticated={() => {
+          loadData();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen bg-[#0B1120] text-[#F8FAFC] overflow-hidden select-none">
       {/* Sidebar Navigation */}
@@ -317,6 +343,8 @@ export const App: React.FC = () => {
           onRefresh={loadData}
           onOpenSuperAdmin={undefined}
           licenseInfo={licenseStatus}
+          currentUserEmail={currentUser?.email}
+          onLogout={() => firebaseAuthService.logout()}
         />
 
         <main className="flex-1 overflow-y-auto p-6">

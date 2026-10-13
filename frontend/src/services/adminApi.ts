@@ -234,5 +234,18 @@ export const adminApi = {
       throw new Error(err.detail || 'License activation failed');
     }
     return res.json();
+  },
+
+  activateCloudLicense: async (companyData: Record<string, any>) => {
+    const res = await fetch('/api/license/activate-cloud', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(companyData)
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Cloud license sync failed');
+    }
+    return res.json();
   }
 };

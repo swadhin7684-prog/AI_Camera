@@ -26,6 +26,7 @@ import {
   AdminDashboardData,
   AuditLogItem
 } from '../../services/adminApi';
+import { cloudLicenseService } from '../../services/firebase';
 
 interface SuperAdminPortalProps {
   onBackToApp?: () => void;
@@ -184,6 +185,21 @@ export const SuperAdminPortal: React.FC<SuperAdminPortalProps> = ({ onBackToApp,
       });
       setCreateResult(res.company);
       loadAdminData();
+
+      // Sync company metadata to Firebase Cloud Firestore for remote station activation
+      try {
+        await cloudLicenseService.createCompanyInCloud({
+          company_id: res.company.company_id,
+          name: res.company.name,
+          contact_email: res.company.contact_email,
+          contact_phone: res.company.contact_phone,
+          plan_type: res.company.plan_type,
+          max_users: Number(newCompanyUsers),
+          validity_days: Number(newCompanyDays)
+        });
+      } catch (cloudErr) {
+        console.warn('Note: Could not sync company to cloud Firestore immediately:', cloudErr);
+      }
     } catch (err: any) {
       alert(err.message || 'Failed to create company account');
     }

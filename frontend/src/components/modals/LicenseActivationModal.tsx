@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Key, Building2, CheckCircle2, AlertTriangle, AlertCircle, ArrowRight } from 'lucide-react';
 import { adminApi, LicenseStatusResult } from '../../services/adminApi';
+import { cloudLicenseService } from '../../services/firebase';
 
 interface LicenseActivationModalProps {
   licenseStatus: LicenseStatusResult | null;
@@ -26,13 +27,28 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
     setLoading(true);
 
     try {
-      const res = await adminApi.activateLicense(companyId.trim(), licenseKey.trim());
+      const cId = companyId.trim().toUpperCase();
+      const lKey = licenseKey.trim();
+
+      // 1. Check SentinelX Cloud Registry in Firebase Firestore
+      const cloudRes = await cloudLicenseService.verifyLicenseOnline(cId, lKey);
+      if (cloudRes.valid && cloudRes.company) {
+        await adminApi.activateCloudLicense(cloudRes.company);
+        setSuccessMsg('Station activated successfully via SentinelX Cloud!');
+        setTimeout(() => {
+          onActivated();
+        }, 1200);
+        return;
+      }
+
+      // 2. If online check failed or offline development, fallback to local database
+      const res = await adminApi.activateLicense(cId, lKey);
       setSuccessMsg(res.message || 'License activated successfully!');
       setTimeout(() => {
         onActivated();
       }, 1200);
     } catch (err: any) {
-      setErrorMsg(err.message || 'License activation failed. Please check your credentials.');
+      setErrorMsg(err.message || 'License activation failed. Please check credentials or network.');
     } finally {
       setLoading(false);
     }
